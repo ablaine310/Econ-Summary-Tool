@@ -264,12 +264,20 @@ table.cf td:first-child{text-align:left;color:#666}
       <label style="font-size:11px"><input type="checkbox" id="sh-oil" checked onchange="drawChart()"> Oil</label>
       <label style="font-size:11px"><input type="checkbox" id="sh-gas" checked onchange="drawChart()"> Gas</label>
       <label style="font-size:11px"><input type="checkbox" id="sh-wat" checked onchange="drawChart()"> Water</label>
+      <label style="font-size:11px;margin-left:8px">Show</label>
+      <select id="prod-months" onchange="drawChart()" style="font-size:12px;width:90px">
+        <option value="36">36 months</option>
+        <option value="60">60 months</option>
+        <option value="120">10 years</option>
+        <option value="240">20 years</option>
+        <option value="9999">Full life</option>
+      </select>
     </div>
   </div>
   <div style="padding:8px 16px 4px;display:flex;gap:14px">
-    <span style="font-size:11px;color:#185FA5">— Oil (BBL/D)</span>
-    <span style="font-size:11px;color:#E8A020">— Gas (MCF/D)</span>
-    <span style="font-size:11px;color:#4AADCF">— Water (BBL/D)</span>
+    <span style="font-size:11px;color:#3B6D11">— Oil (BBL/D)</span>
+    <span style="font-size:11px;color:#A32D2D">— Gas (MCF/D)</span>
+    <span style="font-size:11px;color:#378ADD">— Water (BBL/D)</span>
   </div>
   <canvas id="prod-cv" style="width:100%;height:400px;display:block"></canvas>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px 16px" id="prod-sum"></div>
@@ -656,6 +664,10 @@ function drawChart(){
   const comb=Array.from({length:maxMo},()=>({oD:0,gD:0,wD:0}));
   let last=0;
   wtp.forEach(w=>{const p=buildProfile(w);p.forEach((pt,i)=>{if(i<maxMo){comb[i].oD+=pt.oD;comb[i].gD+=pt.gD;comb[i].wD+=pt.wD;last=Math.max(last,i+1);}});});
+  // Apply month limit
+  const mLimEl=document.getElementById('prod-months');
+  const mLim=mLimEl?+mLimEl.value:36;
+  if(mLim<9999)last=Math.min(last,mLim);
   if(!last){ctx.fillStyle='#999';ctx.font='13px sans-serif';ctx.fillText('No TC data — assign a TC and set Online Date first.',20,H/2);document.getElementById('prod-sum').innerHTML='';return;}
   const data=comb.slice(0,last);
   const pad={l:58,r:52,t:14,b:32};
@@ -670,16 +682,19 @@ function drawChart(){
   ctx.strokeStyle='rgba(0,0,0,0.07)';ctx.lineWidth=0.5;
   [0.25,0.5,0.75,1].forEach(f=>{const y=pad.t+cH*(1-f);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW,y);ctx.stroke();});
   const dL=(key,sc2,col)=>{ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=2;ctx.lineJoin='round';data.forEach((d,i)=>{const x=xS(i),y=sc2(d[key]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();};
-  if(sOil)dL('oD',ySOW,'#185FA5');
-  if(sWat)dL('wD',ySOW,'#4AADCF');
-  if(sGas)dL('gD',ySG,'#E8A020');
+  if(sOil)dL('oD',ySOW,'#3B6D11');
+  if(sWat)dL('wD',ySOW,'#378ADD');
+  if(sGas)dL('gD',ySG,'#A32D2D');
   ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.textAlign='right';
   [0,0.25,0.5,0.75,1].forEach(f=>{const v=yOW*f,y=pad.t+cH*(1-f);ctx.fillText(v>=1000?(v/1000).toFixed(1)+'K':v.toFixed(0),pad.l-4,y+3);});
-  ctx.textAlign='left';ctx.fillStyle='#BA7517';
+  ctx.textAlign='left';ctx.fillStyle='#A32D2D';
   [0,0.25,0.5,0.75,1].forEach(f=>{const v=yG*f,y=pad.t+cH*(1-f);ctx.fillText(v>=1000?(v/1000).toFixed(1)+'K':v.toFixed(0),pad.l+cW+4,y+3);});
   ctx.fillStyle='#999';ctx.textAlign='center';
-  const yt=Math.ceil(data.length/12/6)*12;
-  for(let i=0;i<data.length;i+=yt)ctx.fillText('Yr '+(Math.round(i/12)+1),xS(i),pad.t+cH+22);
+  // X axis in months, tick every N months
+  const tickEvery=data.length<=36?6:data.length<=72?12:data.length<=120?12:24;
+  for(let i=0;i<data.length;i+=tickEvery){
+    ctx.fillText('Mo '+(i+1),xS(i),pad.t+cH+22);
+  }
   const tO=data.reduce((s,d)=>s+d.oD*30,0),tG=data.reduce((s,d)=>s+d.gD*30,0),tW=data.reduce((s,d)=>s+d.wD*30,0);
   document.getElementById('prod-sum').innerHTML=`
     <div class="mc"><div class="mc-label">EUR oil (gross)</div><div class="mc-val">${(tO/1000).toFixed(1)}</div><div class="mc-unit">MBBL</div></div>
@@ -701,7 +716,6 @@ function smt(id,el){
 }
 
 // ── Init ────────────────────────────────────────────────────
-addWell();
 setTimeout(initLib,0);
 </script>
 </body>
