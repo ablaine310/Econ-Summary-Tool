@@ -127,6 +127,11 @@ table.cf td:first-child{text-align:left;color:#666}
     <label style="margin-left:6px">Oil $/BBL</label><input id="g-oil" type="number" step="0.25" placeholder="65" style="width:68px" oninput="applyGP()"/>
     <label>Gas $/MCF</label><input id="g-gas" type="number" step="0.05" placeholder="3.75" style="width:60px" oninput="applyGP()"/>
     <label style="margin-left:6px">Risk %</label><input id="g-risk" type="number" step="1" min="0" max="100" placeholder="100" style="width:54px" oninput="applyG('risk',+this.value)"/>
+    <label style="margin-left:6px">Spud</label><input id="g-spud" type="date" style="width:120px" onchange="applyG('spud',this.value)"/>
+    <label>Online</label><input id="g-online" type="date" style="width:120px" onchange="applyG('online',this.value)"/>
+    <label>WI %</label><input id="g-wi" type="number" step="0.5" placeholder="50" style="width:54px" oninput="applyG('wi',+this.value)"/>
+    <label>NRI %</label><input id="g-nri" type="number" step="0.5" placeholder="37.5" style="width:54px" oninput="applyG('nri',+this.value)"/>
+    <label>Capex $M</label><input id="g-capex" type="number" step="500" placeholder="8000" style="width:68px" oninput="applyG('capex',+this.value)"/>
   </div>
   <div class="scroll">
     <table class="sc">
@@ -279,7 +284,11 @@ table.cf td:first-child{text-align:left;color:#666}
     <span style="font-size:11px;color:#A32D2D">— Gas (MCF/D)</span>
     <span style="font-size:11px;color:#378ADD">— Water (BBL/D)</span>
   </div>
-  <canvas id="prod-cv" style="width:100%;height:400px;display:block"></canvas>
+  <div style="position:relative;width:100%" id="prod-wrapper">
+  <canvas id="prod-cv" style="width:100%;height:400px;display:block"
+    onmousemove="chartHover(event)" onmouseleave="hideTooltip()"></canvas>
+  <div id="prod-tooltip" style="display:none;position:absolute;background:rgba(0,0,0,0.75);color:#fff;font-size:11px;padding:6px 10px;border-radius:5px;pointer-events:none;line-height:1.7;white-space:nowrap"></div>
+</div>
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px 16px" id="prod-sum"></div>
 </div>
 
@@ -388,7 +397,7 @@ function addWell(){
 }
 function removeWell(id){wells=wells.filter(w=>w.id!==id);renderTable();updatePad();}
 function updW(id,f,v){const w=getW(id);if(w){w[f]=v;w.results=null;renderTable();}}
-function applyG(f,v){if(!v&&v!==0)return;wells.forEach(w=>{w[f]=v;w.results=null;});renderTable();}
+function applyG(f,v){if((v===''||v===null||v===undefined)&&v!==0)return;wells.forEach(w=>{w[f]=v;w.results=null;});renderTable();}
 function applyGP(){
   const o=parseFloat(document.getElementById('g-oil').value);
   const g=parseFloat(document.getElementById('g-gas').value);
@@ -647,6 +656,37 @@ function buildProfile(w){
   return prof;
 }
 
+let _chartData=[], _chartPad={l:58,r:52,t:14,b:32}, _chartW=0;
+
+function hideTooltip(){
+  const tt=document.getElementById('prod-tooltip');
+  if(tt)tt.style.display='none';
+}
+
+function chartHover(evt){
+  const cv=document.getElementById('prod-cv');
+  if(!cv||!_chartData.length)return;
+  const rect=cv.getBoundingClientRect();
+  const x=evt.clientX-rect.left;
+  const W=rect.width;
+  const chartW=W-_chartPad.l-_chartPad.r;
+  // Find which month we're hovering
+  const mo=Math.floor((x-_chartPad.l)/chartW*_chartData.length);
+  if(mo<0||mo>=_chartData.length)return hideTooltip();
+  const d=_chartData[mo];
+  const fmtN=v=>v>=1000?(v/1000).toFixed(1)+'K BBL/D':v.toFixed(0)+' BBL/D';
+  const fmtG=v=>v>=1000?(v/1000).toFixed(1)+'K MCF/D':v.toFixed(0)+' MCF/D';
+  const tt=document.getElementById('prod-tooltip');
+  if(!tt)return;
+  tt.style.display='block';
+  tt.style.left=Math.min(x+12, W-160)+'px';
+  tt.style.top='20px';
+  tt.innerHTML=`<strong>Month ${mo+1}</strong><br>`
+    +`<span style="color:#90EE90">Oil: ${fmtN(d.oD)}</span><br>`
+    +`<span style="color:#FF9999">Gas: ${fmtG(d.gD)}</span><br>`
+    +`<span style="color:#87CEEB">Water: ${fmtN(d.wD)}</span>`;
+}
+
 function drawChart(){
   const cv=document.getElementById('prod-cv');if(!cv)return;
   const ctx=cv.getContext('2d');
@@ -670,6 +710,7 @@ function drawChart(){
   if(mLim<9999)last=Math.min(last,mLim);
   if(!last){ctx.fillStyle='#999';ctx.font='13px sans-serif';ctx.fillText('No TC data — assign a TC and set Online Date first.',20,H/2);document.getElementById('prod-sum').innerHTML='';return;}
   const data=comb.slice(0,last);
+  _chartData=data; _chartW=W;
   const pad={l:58,r:52,t:14,b:32};
   const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
   const mOW=Math.max(...data.map(d=>(sOil?d.oD:0)+(sWat?d.wD:0)),1);
@@ -696,11 +737,18 @@ function drawChart(){
     ctx.fillText('Mo '+(i+1),xS(i),pad.t+cH+22);
   }
   const tO=data.reduce((s,d)=>s+d.oD*30,0),tG=data.reduce((s,d)=>s+d.gD*30,0),tW=data.reduce((s,d)=>s+d.wD*30,0);
+  const maxO=Math.max(...data.map(d=>d.oD));
+  const maxG=Math.max(...data.map(d=>d.gD));
+  const maxW=Math.max(...data.map(d=>d.wD));
+  const fmt=v=>v>=1000?(v/1000).toFixed(1)+'K':v.toFixed(0);
   document.getElementById('prod-sum').innerHTML=`
     <div class="mc"><div class="mc-label">EUR oil (gross)</div><div class="mc-val">${(tO/1000).toFixed(1)}</div><div class="mc-unit">MBBL</div></div>
     <div class="mc"><div class="mc-label">EUR gas (gross)</div><div class="mc-val">${(tG/1000).toFixed(1)}</div><div class="mc-unit">MMCF</div></div>
     <div class="mc"><div class="mc-label">EUR water (gross)</div><div class="mc-val">${(tW/1000).toFixed(1)}</div><div class="mc-unit">MBBL</div></div>
-    <div class="mc"><div class="mc-label">Wells w/ TC</div><div class="mc-val">${wtp.filter(w=>w.tc&&w.tc[w.pcase]).length}</div><div class="mc-unit">producing</div></div>`;
+    <div class="mc"><div class="mc-label">Wells w/ TC</div><div class="mc-val">${wtp.filter(w=>w.tc&&w.tc[w.pcase]).length}</div><div class="mc-unit">producing</div></div>
+    <div class="mc"><div class="mc-label" style="color:#3B6D11">Peak oil rate</div><div class="mc-val" style="color:#3B6D11">${fmt(maxO)}</div><div class="mc-unit">BBL/D</div></div>
+    <div class="mc"><div class="mc-label" style="color:#A32D2D">Peak gas rate</div><div class="mc-val" style="color:#A32D2D">${fmt(maxG)}</div><div class="mc-unit">MCF/D</div></div>
+    <div class="mc"><div class="mc-label" style="color:#378ADD">Peak water rate</div><div class="mc-val" style="color:#378ADD">${fmt(maxW)}</div><div class="mc-unit">BBL/D</div></div>`;
 }
 
 // ── Nav ─────────────────────────────────────────────────────
